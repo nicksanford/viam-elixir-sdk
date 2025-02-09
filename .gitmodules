@@ -1,3 +1,6 @@
 [submodule "api"]
 	path = api
 	url = git@github.com:viamrobotics/api.git
+[submodule "googleapis"]
+	path = googleapis
+	url = git@github.com:googleapis/googleapis.git
