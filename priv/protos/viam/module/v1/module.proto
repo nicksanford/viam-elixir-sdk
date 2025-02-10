@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package viam.module.v1;
+
+import "viam/app/v1/robot.proto";
+import "viam/robot/v1/robot.proto";
+
+option go_package = "go.viam.com/api/module/v1";
+
+// ModuleService deals with modular resource registration
+service ModuleService {
+  // AddResource tells a module about a new resource to handle
+  rpc AddResource(AddResourceRequest) returns (AddResourceResponse);
+
+  // ReconfigureResource tells a module to reconfigure an existing resource
+  rpc ReconfigureResource(ReconfigureResourceRequest) returns (ReconfigureResourceResponse);
+
+  // RemoveResource tells a module to close/stop a component/service and remove it
+  rpc RemoveResource(RemoveResourceRequest) returns (RemoveResourceResponse);
+
+  // Ready determines if the server is started and ready to recieve resource configurations.
+  rpc Ready(ReadyRequest) returns (ReadyResponse);
+
+  // ValidateConfig determines whether the given config is valid and registers/returns implicit
+  // dependencies.
+  rpc ValidateConfig(ValidateConfigRequest) returns (ValidateConfigResponse);
+}
+
+message AddResourceRequest {
+  viam.app.v1.ComponentConfig config = 1;
+  repeated string dependencies = 2;
+}
+message AddResourceResponse {}
+
+message ReconfigureResourceRequest {
+  viam.app.v1.ComponentConfig config = 1;
+  repeated string dependencies = 2;
+}
+message ReconfigureResourceResponse {}
+
+message RemoveResourceRequest {
+  string name = 1;
+}
+message RemoveResourceResponse {}
+
+message HandlerDefinition {
+  viam.robot.v1.ResourceRPCSubtype subtype = 1;
+  repeated string models = 2;
+}
+message HandlerMap {
+  repeated HandlerDefinition handlers = 1;
+}
+
+message ReadyRequest {
+  string parent_address = 1;
+  string webrtc_offer = 2;
+}
+
+message ReadyResponse {
+  bool ready = 1;
+  HandlerMap handlermap = 2;
+  string webrtc_answer = 3;
+}
+
+message ValidateConfigRequest {
+  viam.app.v1.ComponentConfig config = 1;
+}
+
+message ValidateConfigResponse {
+  repeated string dependencies = 1;
+}

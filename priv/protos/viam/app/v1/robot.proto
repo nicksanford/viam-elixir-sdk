@@ -1,0 +1,392 @@
+syntax = "proto3";
+
+package viam.app.v1;
+
+import "viam/common/v1/common.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/struct.proto";
+import "viam/tagger/v1/tagger.proto";
+
+option go_package = "go.viam.com/api/app/v1";
+
+// RobotService is used by robots to retrieve configs, report logs, etc...
+service RobotService {
+  // Config requests the current robot config
+  rpc Config(ConfigRequest) returns (ConfigResponse);
+
+  // Certificate requests the current robot certificate
+  rpc Certificate(CertificateRequest) returns (CertificateResponse);
+
+  // Log insert log entries associated with the robot. Allows up to 1000 entries to be added in one request.
+  rpc Log(LogRequest) returns (LogResponse);
+
+  // NeedsRestart returns if the robot should restart and the interval it should check to restart.
+  rpc NeedsRestart(NeedsRestartRequest) returns (NeedsRestartResponse);
+}
+
+message RobotConfig {
+  CloudConfig cloud = 1;
+  repeated RemoteConfig remotes = 2;
+  repeated ComponentConfig components = 3;
+  repeated ProcessConfig processes = 4;
+  repeated ServiceConfig services = 5;
+  optional NetworkConfig network = 6;
+  optional AuthConfig auth = 7;
+  // Turns on debug mode for robot, adding an echo server and more logging and tracing. Only works after restart
+  optional bool debug = 8;
+  repeated ModuleConfig modules = 9;
+  optional bool disable_partial_start = 10;
+  repeated PackageConfig packages = 11;
+  repeated AppValidationStatus overwrite_fragment_status = 12;
+  // Turns on pprof http server on localhost. By default false.
+  bool enable_web_profile = 13;
+  repeated LogPatternConfig log = 14;
+  // Attributes a particular revision to the config.
+  string revision = 15;
+  optional MaintenanceConfig maintenance = 16;
+  // Disables the robot's log deduplication (identical, noisy logs will still
+  // be output individually instead of aggregated.)
+  bool disable_log_deduplication = 17;
+}
+
+// LogPatternConfig allows you to specify a 2-tuple consisting
+// of a logger name and its corresponding log level.
+message LogPatternConfig {
+  string pattern = 1;
+  string level = 2;
+}
+
+// Valid location secret that can be used for authentication to the robot.
+message LocationSecret {
+  string id = 1;
+  // secret payload
+  string secret = 2;
+}
+
+message AppValidationStatus {
+  string error = 1;
+}
+
+message CloudConfig {
+  // Robot part id.
+  string id = 1;
+  string fqdn = 2;
+  string local_fqdn = 3;
+  string managed_by = 4;
+  string signaling_address = 5;
+  bool signaling_insecure = 6;
+  // Deprecated use location_secrets
+  string location_secret = 7 [deprecated = true];
+  // Robot part secret
+  string secret = 8;
+  // All valid location secrets.
+  repeated LocationSecret location_secrets = 9;
+  string primary_org_id = 10;
+  string location_id = 11;
+  string machine_id = 12;
+}
+
+message ComponentConfig {
+  string name = 1;
+  string namespace = 2; // deprecated; use api
+  string type = 3; // deprecated; use api
+  string model = 4;
+  Frame frame = 5;
+  repeated string depends_on = 6;
+  repeated ResourceLevelServiceConfig service_configs = 7 [(tagger.v1.tags) = "json:\"service_config\""];
+  google.protobuf.Struct attributes = 8;
+  string api = 9;
+  LogConfiguration log_configuration = 10;
+}
+
+// A ResourceLevelServiceConfig describes component or remote configuration for a service.
+message ResourceLevelServiceConfig {
+  string type = 1;
+  // TODO(adam): Should this be move to a structured type as defined in the typescript frontend.
+  google.protobuf.Struct attributes = 2;
+}
+
+// A ProcessConfig describes how to manage a system process.
+message ProcessConfig {
+  string id = 1;
+  string name = 2;
+  repeated string args = 3;
+  string cwd = 4;
+  bool one_shot = 5;
+  bool log = 6;
+  int32 stop_signal = 7;
+  google.protobuf.Duration stop_timeout = 8;
+  // additional environment variables passed to the process
+  map<string, string> env = 9;
+  string username = 10;
+}
+
+message ServiceConfig {
+  string name = 1;
+  string namespace = 2; // deprecated; use api
+  string type = 3; // deprecated; use api
+  google.protobuf.Struct attributes = 4;
+  repeated string depends_on = 5;
+  string model = 6;
+  string api = 9;
+  repeated ResourceLevelServiceConfig service_configs = 10 [(tagger.v1.tags) = "json:\"service_config\""];
+  LogConfiguration log_configuration = 11;
+}
+
+message NetworkConfig {
+  string fqdn = 1;
+  string bind_address = 2;
+  string tls_cert_file = 3;
+  string tls_key_file = 4;
+  SessionsConfig sessions = 5;
+}
+
+message SessionsConfig {
+  google.protobuf.Duration heartbeat_window = 1;
+}
+
+message AuthConfig {
+  repeated AuthHandlerConfig handlers = 1;
+  repeated string tls_auth_entities = 2;
+  optional ExternalAuthConfig external_auth_config = 3;
+}
+
+message JWKSFile {
+  // JSON Web Keys (JWKS) file as arbitary json.
+  // See https://www.rfc-editor.org/rfc/rfc7517
+  google.protobuf.Struct json = 1;
+}
+
+// ExternalAuthConfig describes how a viam managed robot can accept
+// credentials signed by the cloud app.
+message ExternalAuthConfig {
+  JWKSFile jwks = 1;
+}
+
+message AuthHandlerConfig {
+  CredentialsType type = 1;
+  google.protobuf.Struct config = 5;
+}
+
+message Frame {
+  string parent = 1;
+  Translation translation = 2;
+  Orientation orientation = 3;
+  common.v1.Geometry geometry = 4;
+}
+
+message LogConfiguration {
+  string level = 1;
+}
+
+message Translation {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message Orientation {
+  message NoOrientation {}
+
+  // OrientationVector containing ox, oy, oz, theta represents an orientation vector
+  // Structured similarly to an angle axis, an orientation vector works differently. Rather than representing an orientation
+  // with an arbitrary axis and a rotation around it from an origin, an orientation vector represents orientation
+  // such that the ox/oy/oz components represent the point on the cartesian unit sphere at which your end effector is pointing
+  // from the origin, and that unit vector forms an axis around which theta rotates. This means that incrementing/decrementing
+  // theta will perform an in-line rotation of the end effector.
+  // Theta is defined as rotation between two planes: the plane defined by the origin, the point (0,0,1), and the rx,ry,rz
+  // point, and the plane defined by the origin, the rx,ry,rz point, and the new local Z axis. So if theta is kept at
+  // zero as the north/south pole is circled, the Roll will correct itself to remain in-line.
+  message OrientationVectorRadians {
+    double theta = 1 [(tagger.v1.tags) = "json:\"th\""];
+    double x = 2;
+    double y = 3;
+    double z = 4;
+  }
+
+  // OrientationVectorDegrees is the orientation vector between two objects, but expressed in degrees rather than radians.
+  // Because protobuf Pose is in degrees, this is necessary.
+  message OrientationVectorDegrees {
+    double theta = 1 [(tagger.v1.tags) = "json:\"th\""];
+    double x = 2;
+    double y = 3;
+    double z = 4;
+  }
+
+  // EulerAngles are three angles (in radians) used to represent the rotation of an object in 3D Euclidean space
+  // The Tait–Bryan angle formalism is used, with rotations around three distinct axes in the z-y′-x″ sequence.
+  message EulerAngles {
+    double roll = 1;
+    double pitch = 2;
+    double yaw = 3;
+  }
+
+  // See here for a thorough explanation: https://en.wikipedia.org/wiki/Axis%E2%80%93angle_representation
+  // Basic explanation: Imagine a 3d cartesian grid centered at 0,0,0, and a sphere of radius 1 centered at
+  // that same point. An orientation can be expressed by first specifying an axis, i.e. a line from the origin
+  // to a point on that sphere, represented by (rx, ry, rz), and a rotation around that axis, theta.
+  // These four numbers can be used as-is (R4), or they can be converted to R3, where theta is multiplied by each of
+  // the unit sphere components to give a vector whose length is theta and whose direction is the original axis.
+  // AxisAngles represents an R4 axis angle.
+  message AxisAngles {
+    double theta = 1 [(tagger.v1.tags) = "json:\"th\""];
+    double x = 2;
+    double y = 3;
+    double z = 4;
+  }
+
+  // Quaternion is a float64 precision quaternion.
+  message Quaternion {
+    double w = 1;
+    double x = 2;
+    double y = 3;
+    double z = 4;
+  }
+
+  oneof type {
+    NoOrientation no_orientation = 1;
+    OrientationVectorRadians vector_radians = 2;
+    OrientationVectorDegrees vector_degrees = 3;
+    EulerAngles euler_angles = 4;
+    AxisAngles axis_angles = 5;
+    Quaternion quaternion = 6;
+  }
+}
+
+// A RemoteConfig describes a remote robot that should be integrated.
+// The Frame field defines how the "world" node of the remote robot should be reconciled with the "world" node of the
+// the current robot. All components of the remote robot who have Parent as "world" will be attached to the parent defined
+// in Frame, and with the given offset as well.
+message RemoteConfig {
+  string name = 1;
+  string address = 2;
+  Frame frame = 3;
+  RemoteAuth auth = 4;
+  string managed_by = 5;
+  bool insecure = 6;
+  google.protobuf.Duration connection_check_interval = 7;
+  google.protobuf.Duration reconnect_interval = 8;
+  repeated ResourceLevelServiceConfig service_configs = 9 [(tagger.v1.tags) = "json:\"service_config\""];
+
+  // Secret is a helper for a robot location secret.
+  string secret = 10;
+}
+
+// RemoteAuth specifies how to authenticate against a remote. If no credentials are
+// specified, authentication does not happen. If an entity is specified, the
+// authentication request will specify it.
+message RemoteAuth {
+  // Credentials packages up both a type of credential along with its payload which
+  // is formatted specific to the type.
+  message Credentials {
+    CredentialsType type = 1;
+    string payload = 2;
+  }
+
+  Credentials credentials = 1;
+  string entity = 2;
+}
+
+message AgentInfo {
+  string host = 1;
+  string os = 2; // Will soon be deprecated, use platform instead
+  // list of all ipv4 ips.
+  repeated string ips = 3;
+  // RDK version
+  string version = 4;
+  string git_revision = 5;
+  // The platform the RDK is running on. For example linux/amd64
+  optional string platform = 6;
+  // Optional tags to further constrain which artifact is returned for modules.
+  repeated string platform_tags = 7;
+}
+
+enum CredentialsType {
+  CREDENTIALS_TYPE_UNSPECIFIED = 0;
+  CREDENTIALS_TYPE_INTERNAL = 1;
+  CREDENTIALS_TYPE_API_KEY = 2;
+  CREDENTIALS_TYPE_ROBOT_SECRET = 3;
+  CREDENTIALS_TYPE_ROBOT_LOCATION_SECRET = 4;
+}
+
+message ConfigRequest {
+  // Robot part id.
+  string id = 1;
+
+  // Details about the RDK (os, version) are updated during this request.
+  optional AgentInfo agent_info = 2;
+}
+
+message ConfigResponse {
+  RobotConfig config = 1;
+}
+
+message CertificateRequest {
+  // Robot part id.
+  string id = 1;
+}
+
+message CertificateResponse {
+  // Robot part id.
+  string id = 1;
+  string tls_certificate = 2;
+  string tls_private_key = 3;
+}
+
+message LogRequest {
+  // Robot part id.
+  string id = 1;
+  repeated common.v1.LogEntry logs = 2;
+}
+
+message LogResponse {}
+
+message NeedsRestartRequest {
+  // Robot part id.
+  string id = 1;
+}
+
+message NeedsRestartResponse {
+  // Robot part id.
+  string id = 1;
+  bool must_restart = 2;
+  google.protobuf.Duration restart_check_interval = 3;
+}
+
+// ModuleConfig is the configuration for a module.
+message ModuleConfig {
+  string name = 1;
+  // path to the executable
+  string path = 2;
+  // log level for module
+  string log_level = 3;
+  // type of the module ("local" or "registry")
+  string type = 4;
+  // the id of the module if it is a registry module
+  string module_id = 5;
+  // additional environment variables passed to the module process
+  map<string, string> env = 6;
+  // info about the validity of the module
+  AppValidationStatus status = 7;
+  // timeout for first_run script
+  google.protobuf.Duration first_run_timeout = 8;
+}
+
+// PackageConfig is the configration for deployed Packages.
+message PackageConfig {
+  // Name is the local name of the package on the RDK. Must be unique across Packages. Must not be empty.
+  string name = 1;
+  // Package is the unique package name hosted by Viam. Must not be empty.
+  string package = 2;
+  // version of the package ID hosted by Viam. If not specified "latest" is assumed.
+  string version = 3;
+  // type of the package
+  string type = 4;
+  // info about the validity of the package
+  AppValidationStatus status = 5;
+}
+
+message MaintenanceConfig {
+  common.v1.ResourceName sensor_name = 1;
+  string maintenance_allowed_key = 2;
+}

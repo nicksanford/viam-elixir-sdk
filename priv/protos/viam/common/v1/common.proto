@@ -1,0 +1,236 @@
+// The following is a list of messages that are used across multiple resource subtypes
+syntax = "proto3";
+
+package viam.common.v1;
+
+import "google/protobuf/descriptor.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "go.viam.com/api/common/v1";
+option java_package = "com.viam.common.v1";
+
+message ResourceName {
+  string namespace = 1;
+  string type = 2;
+  string subtype = 3;
+  string name = 4;
+  repeated string remote_path = 5;
+  string local_name = 6;
+}
+
+/* Pose is a combination of location and orientation.
+   Location is expressed as distance which is represented by x , y, z coordinates. Orientation is expressed as an orientation vector which
+   is represented by o_x, o_y, o_z and theta. The o_x, o_y, o_z coordinates represent the point on the cartesian unit sphere that the end of
+   the arm is pointing to (with the origin as reference). That unit vector forms an axis around which theta rotates. This means that
+   incrementing / decrementing theta will perform an inline rotation of the end effector.
+   Theta is defined as rotation between two planes: the first being defined by the origin, the point (0,0,1), and the rx, ry, rz point, and the
+   second being defined by the origin, the rx, ry, rz point and the local Z axis. Therefore, if theta is kept at zero as the north/south pole
+   is circled, the Roll will correct itself to remain in-line. */
+message Pose {
+  // millimeters from the origin
+  double x = 1;
+  // millimeters from the origin
+  double y = 2;
+  // millimeters from the origin
+  double z = 3;
+  // z component of a vector defining axis of rotation
+  double o_x = 4;
+  // x component of a vector defining axis of rotation
+  double o_y = 5;
+  // y component of a vector defining axis of rotation
+  double o_z = 6;
+  // degrees
+  double theta = 7;
+}
+
+message Orientation {
+  // x component of a vector defining axis of rotation
+  double o_x = 1;
+  // y component of a vector defining axis of rotation
+  double o_y = 2;
+  // z component of a vector defining axis of rotation
+  double o_z = 3;
+  // degrees
+  double theta = 4;
+}
+
+// PoseInFrame contains a pose and the and the reference frame in which it was observed
+message PoseInFrame {
+  string reference_frame = 1;
+  Pose pose = 2;
+}
+
+message Vector3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message Sphere {
+  double radius_mm = 1;
+}
+
+message Capsule {
+  double radius_mm = 1;
+  double length_mm = 2;
+}
+
+// RectangularPrism contains a Vector3 field corresponding to the X, Y, Z dimensions of the prism in mms
+// These dimensions are with respect to the referenceframe in which the RectangularPrism is defined
+message RectangularPrism {
+  Vector3 dims_mm = 1;
+}
+
+// Geometry contains the dimensions of a given geometry and the pose of its center. The geometry is one of either a sphere or a box.
+message Geometry {
+  // Pose of a geometries center point
+  common.v1.Pose center = 1;
+  // Dimensions of a given geometry. This can be a sphere or box
+  oneof geometry_type {
+    Sphere sphere = 2;
+    RectangularPrism box = 3;
+    Capsule capsule = 5;
+  }
+  // Label of the geometry. If none supplied, will be an empty string.
+  string label = 4;
+}
+
+// GeometriesinFrame contains the dimensions of a given geometry, pose of its center point, and the reference frame by which it was
+// observed.
+message GeometriesInFrame {
+  // Reference frame of the observer of the geometry
+  string reference_frame = 1;
+  // Dimensional type
+  repeated Geometry geometries = 2;
+}
+
+// PointCloudObject contains an image in bytes with point cloud data of all of the objects captured by a given observer as well as a
+// repeated list of geometries which respresents the center point and geometry of each of the objects within the point cloud
+message PointCloudObject {
+  // image frame expressed in bytes
+  bytes point_cloud = 1;
+  // volume of a given geometry
+  common.v1.GeometriesInFrame geometries = 2;
+}
+
+message GeoPoint {
+  double latitude = 1;
+  double longitude = 2;
+}
+
+// GeoGeometry contains information describing Geometry(s) that is located at a GeoPoint
+message GeoGeometry {
+  // Location of the geometry
+  GeoPoint location = 1;
+  // Geometries associated with the location, where embedded Pose data is with respect to the specified location
+  repeated Geometry geometries = 2;
+}
+
+// Transform contains a pose and two reference frames. The first reference frame is the starting reference frame, and the second reference
+// frame is the observer reference frame. The second reference frame has a pose which represents the pose of an object in the first
+// reference frame as observed within the second reference frame.
+message Transform {
+  // the name of a given reference frame
+  string reference_frame = 1;
+  // the pose of the above reference frame with respect to a different observer reference frame
+  PoseInFrame pose_in_observer_frame = 2;
+  optional Geometry physical_object = 3;
+}
+
+// WorldState contains information about the physical environment around a given robot. All of the fields within this message are optional,
+// they can include information about the physical dimensions of an obstacle, the freespace of a robot, and any desired transforms between a
+// given reference frame and a new target reference frame.
+message WorldState {
+  // a list of obstacles expressed as a geometry and the reference frame in which it was observed; this field is optional
+  repeated GeometriesInFrame obstacles = 1;
+  // a list of Transforms, optionally with geometries. Used as supplemental transforms to transform a pose from one reference frame to
+  // another, or to attach moving geometries to the frame system. This field is optional
+  repeated Transform transforms = 3;
+}
+
+// ActuatorStatus is a generic status for resources that only need to return actuator status.
+message ActuatorStatus {
+  bool is_moving = 1;
+}
+
+extend google.protobuf.MethodOptions {
+  // safety_heartbeat_monitored is used on methods to signify that if a session is in use
+  // and the session was the last to call this method, the resource associated with the
+  // method will be stopped.
+  optional bool safety_heartbeat_monitored = 84260;
+}
+
+message ResponseMetadata {
+  // captured_at is the time at which the resource as close as physically possible, captured
+  // the data in the response.
+  // Note: If correlating between other resources, be sure that the means
+  // of measuring the capture are similar enough such that comparison can be made between them.
+  optional google.protobuf.Timestamp captured_at = 1;
+}
+
+// DoCommandRequest represents a generic DoCommand input
+message DoCommandRequest {
+  string name = 1;
+  google.protobuf.Struct command = 2;
+}
+
+// DoCommandResponse represents a generic DoCommand output
+message DoCommandResponse {
+  google.protobuf.Struct result = 1;
+}
+
+message GetKinematicsRequest {
+  // The component name
+  string name = 1;
+  // Additional arguments to the method
+  google.protobuf.Struct extra = 99;
+}
+
+enum KinematicsFileFormat {
+  KINEMATICS_FILE_FORMAT_UNSPECIFIED = 0;
+  KINEMATICS_FILE_FORMAT_SVA = 1;
+  KINEMATICS_FILE_FORMAT_URDF = 2;
+}
+
+message GetKinematicsResponse {
+  // The kinematics of the component, in either URDF format or in Viam’s kinematic parameter format (spatial vector algebra)
+  // https://docs.viam.com/internals/kinematic-chain-config/#kinematic-parameters
+  KinematicsFileFormat format = 1;
+  // The byte contents of the file
+  bytes kinematics_data = 2;
+}
+
+message GetGeometriesRequest {
+  // The component name
+  string name = 1;
+  // Additional arguments to the method
+  google.protobuf.Struct extra = 99;
+}
+
+message GetGeometriesResponse {
+  // All geometries associated with the component, in their current configuration, in the frame of that component.
+  repeated Geometry geometries = 1;
+}
+
+message GetReadingsRequest {
+  // Name of a sensor
+  string name = 1;
+  // Additional arguments to the method
+  google.protobuf.Struct extra = 99;
+}
+
+message GetReadingsResponse {
+  map<string, google.protobuf.Value> readings = 1;
+}
+
+message LogEntry {
+  string host = 1;
+  string level = 2;
+  google.protobuf.Timestamp time = 3;
+  string logger_name = 4;
+  string message = 5;
+  google.protobuf.Struct caller = 6;
+  string stack = 7;
+  repeated google.protobuf.Struct fields = 8;
+}
