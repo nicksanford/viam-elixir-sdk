@@ -39,3 +39,8 @@ setup:
 
 test:
 	curl -v -H 'Content-type: application/json' -X POST -d '{"hi":"there"}' 127.0.0.1:5858/viam.module.v1.ModuleService/AddResource
+
+start:
+	mix deps.get
+	mix compile
+	iex -S mix
