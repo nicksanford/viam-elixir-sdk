@@ -21,7 +21,7 @@ all:
 	sed -i '' 's|import \"component|import \"viam/component|g' priv/protos/viam/service/vision/v1/vision.proto
 	protoc \
 		-I priv/protos \
-		--elixir_out=plugins=grpc:./lib/gen  \
+		--elixir_out=gen_descriptors=true,plugins=grpc:./lib/gen  \
 		--elixir_opt=include_docs=true \
 		priv/protos/google/api/*.proto \
 		priv/protos/viam/common/v1/common.proto \
@@ -32,6 +32,10 @@ all:
 		priv/protos/viam/component/camera/v1/camera.proto \
 		priv/protos/viam/component/sensor/v1/sensor.proto \
 		priv/protos/viam/service/vision/v1/vision.proto
+	rm -rf lib/gen/google
 
 setup:
 	mix escript.install hex protobuf 0.14.0
+
+test:
+	curl -v -H 'Content-type: application/json' -X POST -d '{"hi":"there"}' 127.0.0.1:5858/viam.module.v1.ModuleService/AddResource
